@@ -3,57 +3,49 @@ import requests
 from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="AI 뉴스 분석기", layout="wide")
-st.title("📰 비트코인 실시간 뉴스 심리 분석")
-
-# 멘토의 팁: 단어장을 대폭 늘려야 정확해집니다.
-POS = ['상승', '호재', '폭등', '돌파', '반등', '긍정', '신고가', '매수', '급등', 'ETF', '채택']
-NEG = ['하락', '악재', '폭락', '규제', '우려', '유의', '금지', '매도', '급락', '경고', '조정']
+st.title("📰 비트코인 실시간 뉴스 수집기")
 
 def get_news():
-    # 최신순 정렬(&sort=1)로 비트코인 관련 뉴스 수집
+    # 1. 네이버 뉴스 최신순 검색 결과 URL
     url = "https://search.naver.com/search.naver?where=news&query=비트코인&sort=1"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    res = requests.get(url, headers=headers)
-    soup = BeautifulSoup(res.text, 'html.parser')
-    return soup.select('.news_tit')
-
-if st.button('🚀 최신 뉴스 분석 시작'):
-    news_items = get_news()
     
-    if not news_items:
-        st.warning("뉴스를 가져오지 못했습니다. 잠시 후 다시 시도하세요.")
-    else:
-        st.info(f"총 {len(news_items)}개의 최신 뉴스를 발견했습니다!")
-        total_score = 0
+    # 2. 멘토의 핵심 팁: 브라우저인 척 위장하는 신분증(User-Agent)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    try:
+        res = requests.get(url, headers=headers, timeout=5)
+        res.raise_for_status() # 접속 에러 시 즉시 예외 발생
         
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # 3. 뉴스 제목 요소 찾기 (네이버의 현재 뉴스 제목 클래스)
+        news_items = soup.select('a.news_tit')
+        
+        results = []
         for item in news_items:
             title = item.get_text()
             link = item['href']
+            results.append({'title': title, 'link': link})
             
-            # 단어 감지 로직
-            current_score = 0
-            found_pos = [p for p in POS if p in title]
-            found_neg = [n for n in NEG if n in title]
-            
-            current_score += len(found_pos)
-            current_score -= len(found_neg)
-            total_score += current_score
-            
-            # 화면 출력
-            with st.expander(f"📄 {title}"):
-                st.write(f"🔗 [기사 원문 보기]({link})")
-                if found_pos: st.success(f"긍정 단어 발견: {', '.join(found_pos)}")
-                if found_neg: st.error(f"부정 단어 발견: {', '.join(found_neg)}")
-                if not found_pos and not found_neg: st.write("⚪ 감지된 감성 단어 없음")
+        return results
+    except Exception as e:
+        st.error(f"데이터 수집 중 오류 발생: {e}")
+        return []
 
-        # 종합 결과 비주얼
-        st.divider()
-        st.subheader("📊 오늘의 시장 심리 점수")
+if st.button('🚀 최신 뉴스 강제 수집 시작'):
+    with st.spinner('네이버 뉴스를 긁어오는 중...'):
+        news = get_news()
         
-        if total_score > 0:
-            st.balloons() # 축하 풍선!
-            st.success(f"최종 점수: {total_score}점 | 시장은 현재 **탐욕/긍정** 단계입니다.")
-        elif total_score < 0:
-            st.error(f"최종 점수: {total_score}점 | 시장은 현재 **공포/부정** 단계입니다.")
+        if news:
+            st.success(f"성공! {len(news)}개의 뉴스를 가져왔습니다.")
+            for i, n in enumerate(news):
+                st.write(f"{i+1}. [{n['title']}]({n['link']})")
+                st.divider()
         else:
-            st.warning("최종 점수: 0점 | 시장은 현재 **방향성 탐색 중(중립)**입니다.")
+            st.error("뉴스를 하나도 발견하지 못했습니다. 네이버 차단 혹은 태그 이름 변경 가능성이 있습니다.")
+            # 멘토의 디버깅: 실제 페이지 내용을 살짝 보여줌
+            if st.checkbox("수집된 원본 텍스트 확인 (디버깅용)"):
+                res = requests.get("https://search.naver.com/search.naver?where=news&query=비트코인&sort=1")
+                st.text(res.text[:500])

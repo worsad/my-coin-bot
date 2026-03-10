@@ -1,51 +1,48 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 
-st.set_page_config(page_title="AI 뉴스 분석기", layout="wide")
-st.title("📰 비트코인 실시간 뉴스 수집기")
+st.set_page_config(page_title="글로벌 코인 뉴스", layout="wide")
+st.title("🌐 구글 뉴스 실시간 수집 (차단 방지형)")
 
-def get_news():
-    # 1. 네이버 뉴스 최신순 검색 결과 URL
-    url = "https://search.naver.com/search.naver?where=news&query=비트코인&sort=1"
-    
-    # 2. 멘토의 핵심 팁: 브라우저인 척 위장하는 신분증(User-Agent)
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+def get_google_news():
+    # 구글 뉴스 RSS (한글, 대한민국 설정)
+    url = "https://news.google.com/rss/search?q=비트코인&hl=ko&gl=KR&ceid=KR:ko"
     
     try:
-        res = requests.get(url, headers=headers, timeout=5)
-        res.raise_for_status() # 접속 에러 시 즉시 예외 발생
-        
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # 3. 뉴스 제목 요소 찾기 (네이버의 현재 뉴스 제목 클래스)
-        news_items = soup.select('a.news_tit')
+        res = requests.get(url, timeout=10)
+        # XML 구조 파싱 (구글 뉴스는 XML로 데이터를 줍니다)
+        root = ET.fromstring(res.text)
         
         results = []
-        for item in news_items:
-            title = item.get_text()
-            link = item['href']
-            results.append({'title': title, 'link': link})
+        # 구글 뉴스 RSS의 기사 아이템(item)들만 추출
+        for item in root.findall('.//item')[:15]: # 최신 15개
+            title = item.find('title').text
+            link = item.find('link').text
+            pub_date = item.find('pubDate').text
+            results.append({'title': title, 'link': link, 'date': pub_date})
             
         return results
     except Exception as e:
-        st.error(f"데이터 수집 중 오류 발생: {e}")
+        st.error(f"구글 뉴스 연결 중 오류: {e}")
         return []
 
-if st.button('🚀 최신 뉴스 강제 수집 시작'):
-    with st.spinner('네이버 뉴스를 긁어오는 중...'):
-        news = get_news()
+if st.button('🚀 구글 뉴스 강제 호출'):
+    with st.spinner('구글 서버에서 뉴스를 가져오는 중...'):
+        news = get_google_news()
         
         if news:
-            st.success(f"성공! {len(news)}개의 뉴스를 가져왔습니다.")
+            st.success(f"성공! 구글에서 {len(news)}개의 뉴스를 확보했습니다.")
             for i, n in enumerate(news):
-                st.write(f"{i+1}. [{n['title']}]({n['link']})")
-                st.divider()
+                with st.expander(f"{i+1}. {n['title']}"):
+                    st.write(f"📅 게시일: {n['date']}")
+                    st.write(f"🔗 [기사 원문 읽기]({n['link']})")
+                    
+                    # 간단한 키워드 분석 (상승/하락)
+                    if any(word in n['title'] for word in ['상승', '호재', '돌파', '폭등']):
+                        st.success("🟢 긍정 신호 포착")
+                    elif any(word in n['title'] for word in ['하락', '악재', '폭락', '규제']):
+                        st.error("🔴 부정 신호 포착")
         else:
-            st.error("뉴스를 하나도 발견하지 못했습니다. 네이버 차단 혹은 태그 이름 변경 가능성이 있습니다.")
-            # 멘토의 디버깅: 실제 페이지 내용을 살짝 보여줌
-            if st.checkbox("수집된 원본 텍스트 확인 (디버깅용)"):
-                res = requests.get("https://search.naver.com/search.naver?where=news&query=비트코인&sort=1")
-                st.text(res.text[:500])
+            st.error("구글 뉴스조차 응답하지 않습니다. 네트워크 설정을 확인하세요.")

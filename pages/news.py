@@ -12,103 +12,63 @@ api_key = st.secrets.get("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 if api_key:
     genai.configure(api_key=api_key)
-    # 안전 설정(Safety Settings)을 해제하여 뉴스 분석 시 거부 반응 최소화
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # 안전 설정을 모두 해제하여 뉴스 분석 차단을 방지 (중요!)
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+    model = genai.GenerativeModel('gemini-1.5-flash', safety_settings=safety_settings)
 else:
-    st.error("🚨 API 키가 설정되지 않았습니다! Streamlit Secrets를 확인하세요.")
+    st.error("🚨 API 키가 없습니다!")
     st.stop()
 
-st.set_page_config(page_title="AI 뉴스 분석 센터", layout="wide")
-st.title("🌐 AI 실시간 뉴스 수치 판독기")
+st.title("🌐 AI 뉴스 실시간 분석 (디버깅 모드)")
 
 def get_ai_news_scores():
-    # 쿼리에 '코인' 추가하여 더 명확한 데이터 수집
     url = "https://news.google.com/rss/search?q=비트코인+코인+when:1d&hl=ko&gl=KR&ceid=KR:ko"
     
     try:
         res = requests.get(url, timeout=10)
-        res.encoding = 'utf-8'
         root = ET.fromstring(res.text)
-        items = root.findall('.//item')[:5] # 안정성을 위해 5개로 압축 진행
+        items = root.findall('.//item')[:5] 
         
         results = []
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
         for i, item in enumerate(items):
             title = item.find('title').text
             link = item.find('link').text
             
-            status_text.text(f"🤖 AI가 뉴스 맥락 분석 중 ({i+1}/{len(items)})...")
-            
-            # --- 멘토의 핵심 수정: RPM 제한 회피를 위한 지연 시간 강화 ---
+            # 멘토의 조언: 호출 전 지연 시간은 필수!
             time.sleep(2.0) 
             
             try:
-                # 딴소리 못하게 프롬프트를 매우 엄격하게 수정
-                prompt = f"""
-                Analyze the following crypto news title.
-                Rate its impact on Bitcoin price from -100(Very Bearish) to 100(Very Bullish).
-                Respond ONLY with the number. Do not write anything else.
-                Title: {title}
-                """
+                # 프롬프트를 더 강력하게 수정
+                prompt = f"Analyze this crypto news title and give a score from -100 to 100 based on market impact. Give ONLY the number. Title: {title}"
                 response = model.generate_content(prompt)
-                ai_text = response.text.strip()
                 
-                # 숫자 추출 로직 강화
-                score_match = re.search(r'-?\d+', ai_text)
-                score = int(score_match.group()) if score_match else 0
+                # AI가 실제로 한 말을 로그에 찍음 (범인 검거용)
+                ai_raw_text = response.text.strip()
+                st.write(f"🔍 AI 원문 응답 ({i+1}): {ai_raw_text}") 
+                
+                # 숫자 추출 로직 (더 정교하게)
+                numbers = re.findall(r'-?\d+', ai_raw_text)
+                score = int(numbers[0]) if numbers else 0
                 
             except Exception as e:
-                print(f"AI 분석 개별 에러: {e}")
+                st.warning(f"⚠️ {i+1}번 기사 분석 중 에러: {e}")
                 score = 0
                 
             results.append({'title': title, 'link': link, 'score': score})
-            progress_bar.progress((i + 1) / len(items))
             
-        status_text.empty()
-        progress_bar.empty()
         return results
     except Exception as e:
-        st.error(f"데이터 수집 중 오류 발생: {e}")
+        st.error(f"데이터 수집 에러: {e}")
         return []
 
-# --- UI 레이아웃 ---
-if st.button('🚀 실시간 뉴스 점수 분석 시작'):
-    news_data = get_ai_news_scores()
-    
-    if news_data:
-        avg_score = sum(n['score'] for n in news_data) / len(news_data)
-        
-        # 종합 점수 게이지 스타일 표시
-        col1, col2 = st.columns([1, 2])
-        col1.metric("📊 평균 심리", f"{avg_score:+.1f}점")
-        
-        if avg_score > 10:
-            col2.success("현재 시장 뉴스는 대체로 '호재' 위주입니다.")
-        elif avg_score < -10:
-            col2.error("현재 시장 뉴스는 대체로 '악재' 위주입니다.")
-        else:
-            col2.warning("현재 시장 뉴스는 '중립' 상태입니다.")
-
-        st.divider()
-        news_data.sort(key=lambda x: x['score'], reverse=True)
-
-        for n in news_data:
-            if n['score'] >= 50: bg, lb = "#D4EDDA", "🔥 강력호재"
-            elif n['score'] <= -50: bg, lb = "#F8D7DA", "🚨 강력악재"
-            elif n['score'] > 0: bg, lb = "#E7F3FF", "🟢 긍정"
-            elif n['score'] < 0: bg, lb = "#FFF3CD", "🔴 하락주의"
-            else: bg, lb = "#F2F2F2", "💬 정보"
-
-            with st.expander(f"[{n['score']}점] {n['title']}"):
-                st.markdown(f"""
-                <div style="background-color:{bg}; padding:15px; border-radius:10px; border: 1px solid #ddd;">
-                    <h4 style="margin:0; color:black;">AI 판독: {lb} ({n['score']}점)</h4>
-                    <p style="margin:10px 0 0 0;"><a href="{n['link']}" target="_blank" style="color:#0066cc;">기사 전문 보기</a></p>
-                </div>
-                """, unsafe_allow_html=True)
-    else:
-        st.warning("뉴스를 가져오지 못했습니다. 잠시 후 다시 시도하세요.")
-
-st.caption(f"Last Analysis Sync: {datetime.now(UTC).astimezone().strftime('%Y-%m-%d %H:%M:%S')}")
+if st.button('🚀 분석 시작 및 범인 찾기'):
+    data = get_ai_news_scores()
+    if data:
+        st.success("분석 완료!")
+        for n in data:
+            st.write(f"**[{n['score']}점]** {n['title']}")

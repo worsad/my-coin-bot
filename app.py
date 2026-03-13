@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import time
+import plotly.express as px
 from datetime import datetime, timedelta, UTC # UTC 추가
 
 st.set_page_config(page_title="멀티 타임프레임 터미널", layout="wide")

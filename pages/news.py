@@ -19,7 +19,7 @@ if api_key:
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
-    model = genai.GenerativeModel('gemini-1.5-flash', safety_settings=safety_settings)
+    model = genai.GenerativeModel('gemini-1.5-flash-latest', safety_settings=safety_settings)
 else:
     st.error("🚨 API 키가 없습니다!")
     st.stop()

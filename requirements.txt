@@ -1,5 +1,8 @@
 streamlit
 requests
-beautifulsoup4
 pandas
 plotly
+google-generativeai
+python-dotenv
+beautifulsoup4
+lxml

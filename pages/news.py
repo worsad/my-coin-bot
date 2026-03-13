@@ -82,7 +82,7 @@ if st.session_state.news_data:
                  color='score', color_continuous_scale='RdBu')
     
     # 여기서 key="sentiment_chart"를 넣어야 무한 루프가 안 납니다.
-    st.plotly_chart(fig, use_container_width=True, key="sentiment_chart_unique")
+    st.plotly_chart(fig, use_container_width=True, key="sentiment_chart_unique", key="sentiment_chart_fixed")
 
     st.divider()
     
@@ -92,6 +92,6 @@ if st.session_state.news_data:
         st.markdown(f"**[:{color}[{n['score']}점]]** [{n['title']}]({n['link']})")
 
     # 수동 새로고침 버튼
-    if st.button('🔄 데이터 새로고침', key="refresh_button"):
+    if st.button('🔄 데이터 새로고침', key="refresh_button", key="unique_button_1"):
         del st.session_state.news_data
         st.rerun()

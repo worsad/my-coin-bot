@@ -25,7 +25,7 @@ st.set_page_config(page_title="AI 코인 터미널", layout="wide")
 # --- 2. 뉴스 분석 엔진 (1분 캐싱) ---
 def get_ai_news_analysis():
     try:
-        url = "https://news.google.com/rss/search?q=비트코인+when:1h&hl=ko&gl=KR&ceid=KR:ko"
+        url = "https://news.google.com/rss/search?q=비트코인+when:1d&hl=ko&gl=KR&ceid=KR:ko"
         res = requests.get(url)
         soup = BeautifulSoup(res.text, 'xml')
         items = soup.find_all('item')[:3]

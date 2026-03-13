@@ -14,65 +14,58 @@ if api_key:
         client = genai.Client(api_key=api_key)
         st.sidebar.success("✅ Gemini 엔진 온라인")
     except Exception as e:
-        st.sidebar.error(f"❌ 엔진 시동 실패: {e}")
+        st.sidebar.error("❌ 엔진 시동 실패")
         st.stop()
 else:
     st.error("🚨 API 키를 등록하세요!")
     st.stop()
 
-st.title("💰 AI 뉴스 분석 (생존 모드)")
+st.title("💰 AI 뉴스 제목 스캐너")
 
 def fetch_and_analyze():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    
-    # 캐시 방지를 위한 타임스탬프
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     now_ts = int(time.time())
     url = f"https://news.google.com/rss/search?q=비트코인+시황&hl=ko&gl=KR&ceid=KR:ko&ts={now_ts}"
     
     try:
         res = requests.get(url, headers=headers, timeout=15)
-        if res.status_code != 200:
-            return []
-            
         root = ET.fromstring(res.content)
-        # [생존 전략 1] 분석 개수를 2개로 줄여서 확실한 성공을 보장합니다.
-        items = root.findall('.//item')[:2] 
+        # 안정성을 위해 딱 3개만 집중 분석합니다.
+        items = root.findall('.//item')[:3] 
         
         if not items:
             st.warning("🧐 현재 분석할 뉴스가 없습니다.")
             return []
 
         results = []
-        progress_bar = st.progress(0, text="할당량 보호를 위해 천천히 진행 중...")
+        progress_bar = st.progress(0, text="API를 보호하며 제목 분석 중...")
 
         for i, item in enumerate(items):
             title = item.find('title').text
             link = item.find('link').text
             
-            # [생존 전략 2] 대기 시간을 10초로 대폭 늘립니다. 
-            # 무료 티어는 분당 요청 횟수가 매우 적기 때문입니다.
+            # [생존 전략] 무료 티어는 10초 대기가 가장 안전합니다.
             time.sleep(10.0) 
             
             try:
-                # [생존 전략 3] 2.0-flash 대신 1.5-flash를 사용합니다. 
-                # 1.5 모델은 무료 티어 제한이 훨씬 널널합니다.
-                prompt = f"뉴스 제목을 보고 코인 가격 영향력을 -100에서 100 사이 숫자로만 답해. 제목: {title}"
+                # 멘토의 프롬프트: 점수와 짧은 이유를 함께 요구 (정확도 향상)
+                prompt = f"코인 분석가로서 다음 뉴스 제목이 가격에 미칠 영향을 분석해. 점수는 -100~100 사이로 주고, 이유를 10자 이내로 써. 형식: [점수] 숫자 [이유] 내용. 제목: {title}"
+                
                 response = client.models.generate_content(
                     model='gemini-1.5-flash', 
                     contents=prompt
                 )
                 
-                score_text = response.text.strip()
-                numbers = re.findall(r'-?\d+', score_text)
-                score = int(numbers[0]) if numbers else 0
-            except Exception as e:
-                # 에러 발생 시 사용자에게 알리고 0점 처리
-                st.info(f"💡 {i+1}번 뉴스 분석 대기 중 (API 제한 가능성)")
-                score = 0
+                res_text = response.text
+                score = int(re.findall(r'-?\d+', res_text)[0])
+                # 이유 부분 추출 (없으면 공백)
+                reason_match = re.search(r'\[이유\]\s*(.*)', res_text)
+                reason = reason_match.group(1) if reason_match else "분석 완료"
                 
-            results.append({'title': title, 'link': link, 'score': score})
+            except:
+                score, reason = 0, "분석 지연"
+                
+            results.append({'title': title, 'link': link, 'score': score, 'reason': reason})
             progress_bar.progress((i + 1) / len(items))
         
         progress_bar.empty()
@@ -81,33 +74,29 @@ def fetch_and_analyze():
         st.error(f"🚨 시스템 오류: {e}")
         return []
 
-# --- 실행 및 세션 관리 ---
-# 페이지 로드 시 바로 실행하지 않고, 데이터가 없을 때만 실행
+# --- 실행 및 결과 출력 ---
 if 'news_data' not in st.session_state:
-    with st.spinner('📢 시장 데이터를 가져오는 중입니다...'):
-        st.session_state.news_data = fetch_and_analyze()
+    st.session_state.news_data = fetch_and_analyze()
 
 if st.session_state.news_data:
     data = st.session_state.news_data
     avg_score = sum(n['score'] for n in data) / len(data)
     
-    st.subheader(f"📊 종합 시장 심리: {avg_score:+.1f}점")
+    # 종합 지표
+    st.subheader(f"📊 종합 시장 점수: {avg_score:+.1f}점")
     
-    # 시각화 (중복 ID 방지 key)
     fig = px.bar(data, x='score', y='title', orientation='h', 
-                 title="AI 뉴스 분석 결과",
-                 color='score', color_continuous_scale='RdBu',
-                 range_x=[-100, 100])
-    
-    st.plotly_chart(fig, use_container_width=True, key="fixed_sentiment_chart")
+                 color='score', color_continuous_scale='RdBu', range_x=[-100, 100])
+    st.plotly_chart(fig, use_container_width=True, key="fixed_title_chart")
 
     st.divider()
     
     for n in data:
         color = "red" if n['score'] < 0 else "blue"
-        st.markdown(f"**[:{color}[{n['score']}점]]** [{n['title']}]({n['link']})")
+        with st.expander(f"**[:{color}[{n['score']}점]]** {n['title']}"):
+            st.write(f"💡 **AI 판단:** {n['reason']}")
+            st.write(f"🔗 [기사 원문]({n['link']})")
 
-    # 새로고침 버튼
-    if st.button('🔄 새 뉴스 가져오기', key="news_refresh_btn"):
+    if st.button('🔄 다시 분석하기', key="refresh_btn"):
         del st.session_state.news_data
         st.rerun()

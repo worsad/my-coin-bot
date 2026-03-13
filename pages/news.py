@@ -1,48 +1,62 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
+import google.generativeai as genai
+import os
+import re
+from dotenv import load_dotenv
 
-st.set_page_config(page_title="글로벌 코인 뉴스", layout="wide")
-st.title("🌐 구글 뉴스 실시간 수집 (차단 방지형)")
+# 보안 및 설정
+load_dotenv()
+api_key = st.secrets.get("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
-def get_google_news():
-    # 구글 뉴스 RSS (한글, 대한민국 설정)
-    url = "https://news.google.com/rss/search?q=비트코인&hl=ko&gl=KR&ceid=KR:ko"
-    
+if api_key:
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    st.error("🚨 API 키가 설정되지 않았습니다!")
+    st.stop()
+
+def get_ai_news_scores():
+    url = "https://news.google.com/rss/search?q=비트코인+when:1d&hl=ko&gl=KR&ceid=KR:ko"
     try:
         res = requests.get(url, timeout=10)
-        # XML 구조 파싱 (구글 뉴스는 XML로 데이터를 줍니다)
         root = ET.fromstring(res.text)
-        
         results = []
-        # 구글 뉴스 RSS의 기사 아이템(item)들만 추출
-        for item in root.findall('.//item')[:15]: # 최신 15개
+        
+        for item in root.findall('.//item')[:10]:
             title = item.find('title').text
             link = item.find('link').text
-            pub_date = item.find('pubDate').text
-            results.append({'title': title, 'link': link, 'date': pub_date})
             
+            # --- 멘토의 핵심: AI에게 점수(숫자) 요구 ---
+            prompt = f"이 뉴스 제목을 읽고 비트코인 시장에 미칠 영향을 -100에서 100 사이의 '정수' 하나로만 답해: {title}"
+            response = model.generate_content(prompt)
+            
+            # 숫자만 뽑아내는 정규식 (이게 있어야 숫자로 찍힙니다)
+            score_match = re.search(r'-?\d+', response.text)
+            score = int(score_match.group()) if score_match else 0
+            
+            results.append({'title': title, 'link': link, 'score': score})
         return results
-    except Exception as e:
-        st.error(f"구글 뉴스 연결 중 오류: {e}")
+    except:
         return []
 
-if st.button('🚀 구글 뉴스 강제 호출'):
-    with st.spinner('구글 서버에서 뉴스를 가져오는 중...'):
-        news = get_google_news()
+# --- UI 출력 부분 ---
+st.title("🌐 AI 실시간 뉴스 수치 판독기")
+
+if st.button('🚀 실시간 뉴스 점수 분석'):
+    with st.spinner('AI가 뉴스를 숫자로 변환 중...'):
+        news_data = get_ai_news_scores()
         
-        if news:
-            st.success(f"성공! 구글에서 {len(news)}개의 뉴스를 확보했습니다.")
-            for i, n in enumerate(news):
-                with st.expander(f"{i+1}. {n['title']}"):
-                    st.write(f"📅 게시일: {n['date']}")
-                    st.write(f"🔗 [기사 원문 읽기]({n['link']})")
-                    
-                    # 간단한 키워드 분석 (상승/하락)
-                    if any(word in n['title'] for word in ['상승', '호재', '돌파', '폭등']):
-                        st.success("🟢 긍정 신호 포착")
-                    elif any(word in n['title'] for word in ['하락', '악재', '폭락', '규제']):
-                        st.error("🔴 부정 신호 포착")
-        else:
-            st.error("구글 뉴스조차 응답하지 않습니다. 네트워크 설정을 확인하세요.")
+        for n in news_data:
+            # 숫자에 따라 색상 결정
+            if n['score'] >= 50: color = "#00FF00" # 강한 초록
+            elif n['score'] > 0: color = "#CCE5FF" # 연한 파랑
+            elif n['score'] <= -50: color = "#FF0000" # 강한 빨강
+            elif n['score'] < 0: color = "#FFCCCC" # 연한 빨강
+            else: color = "#FFFFFF"
+
+            # 숫자를 강조한 레이아웃
+            with st.expander(f"[{n['score']}점] {n['title']}"):
+                st.markdown(f"### AI 신뢰 점수: <span style='color:{color}'>{n['score']}점</span>", unsafe_allow_html=True)
+                st.write(f"🔗 [기사 원문 읽기]({n['link']})")

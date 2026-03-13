@@ -6,13 +6,13 @@ import time
 import re
 import plotly.express as px
 
-# 1. 보안 및 AI 설정
+# 1. 보안 및 AI 설정 (새 키를 Secrets에 넣었는지 확인하세요!)
 api_key = st.secrets.get("GOOGLE_API_KEY")
 
 if api_key:
     try:
         client = genai.Client(api_key=api_key)
-        st.sidebar.success("✅ Gemini 엔진 온라인")
+        st.sidebar.success("✅ 새 API 키 가동 중")
     except Exception as e:
         st.sidebar.error("❌ 엔진 시동 실패")
         st.stop()
@@ -20,7 +20,7 @@ else:
     st.error("🚨 API 키를 등록하세요!")
     st.stop()
 
-st.title("💰 AI 뉴스 정밀 스캐너")
+st.title("💰 AI 뉴스 정밀 스캐너 (디버깅 모드)")
 
 def fetch_and_analyze():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
@@ -33,31 +33,41 @@ def fetch_and_analyze():
         items = root.findall('.//item')[:3] 
         
         if not items:
+            st.warning("🧐 뉴스를 가져오지 못했습니다.")
             return []
 
         results = []
-        progress_bar = st.progress(0, text="AI가 시장 흐름을 읽고 있습니다...")
+        progress_bar = st.progress(0, text="AI 분석 중...")
 
         for i, item in enumerate(items):
             title = item.find('title').text
             link = item.find('link').text
             
-            # [생존 전략] 무료 API 보호를 위한 13초 대기
-            time.sleep(13.0) 
+            # 무료 티어 안정권 15초 대기
+            time.sleep(15.0) 
             
             try:
-                # [개선] 숫자를 더 잘 추출할 수 있게 프롬프트 수정
-                prompt = f"코인 트레이더로서 이 뉴스 제목을 -100에서 100 사이 숫자로 평가해. 다른 말 하지 말고 숫자만 딱 말해. 제목: {title}"
+                # 프롬프트를 더 엄격하게 수정
+                prompt = f"다른 설명 없이 오직 -100에서 100 사이의 숫자 하나만 답해. 제목: {title}"
                 response = client.models.generate_content(
                     model='gemini-1.5-flash', 
                     contents=prompt
                 )
                 
-                # [개선] 0점 방지용 정규표현식
                 res_text = response.text.strip()
+                
+                # [디버깅] AI가 실제로 뭐라고 하는지 확인 (중요!)
+                st.info(f"🤖 {i+1}번 AI 답변: {res_text}")
+                
                 numbers = re.findall(r'-?\d+', res_text)
-                score = int(numbers[0]) if numbers else 0
-            except:
+                if numbers:
+                    score = int(numbers[0])
+                else:
+                    st.warning(f"⚠️ {i+1}번 뉴스에서 숫자를 찾을 수 없음")
+                    score = 0
+            except Exception as e:
+                # 에러 내용을 화면에 직접 표시
+                st.error(f"❌ {i+1}번 분석 에러: {str(e)[:100]}")
                 score = 0
                 
             results.append({'title': title, 'link': link, 'score': score})
@@ -69,7 +79,7 @@ def fetch_and_analyze():
         st.error(f"🚨 시스템 오류: {e}")
         return []
 
-# --- 실행 및 결과 출력 ---
+# --- 실행부 ---
 if 'news_data' not in st.session_state:
     st.session_state.news_data = fetch_and_analyze()
 
@@ -81,9 +91,7 @@ if st.session_state.news_data:
     
     fig = px.bar(data, x='score', y='title', orientation='h', 
                  color='score', color_continuous_scale='RdBu', range_x=[-100, 100])
-    
-    # 🔥 [로그 에러 해결] use_container_width=True 대신 width='stretch' 사용
-    st.plotly_chart(fig, width='stretch', key="fixed_news_chart")
+    st.plotly_chart(fig, width='stretch', key="debug_chart")
 
     st.divider()
     

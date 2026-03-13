@@ -2,17 +2,18 @@ import streamlit as st
 import requests
 import pandas as pd
 import time
-from datetime import datetime, timedelta
-import plotly.express as px
+from datetime import datetime, timedelta, UTC # UTC 추가
 
 st.set_page_config(page_title="멀티 타임프레임 터미널", layout="wide")
 
+# 1. 멘토의 수정: 구식 utcnow()를 최신 표준으로 교체
 def get_now_kst():
-    return datetime.utcnow() + timedelta(hours=9)
+    # 로그 에러 원인 해결: datetime.now(UTC) 사용
+    return datetime.now(UTC) + timedelta(hours=9)
 
 st.title("🚀 비트코인 전천후 분석 터미널")
 
-# 1. 멘토의 핵심: 분봉 선택 메뉴
+# 2. 멘토의 핵심: 분봉 선택 메뉴
 interval = st.selectbox(
     "차트 주기를 선택하세요",
     ["1분봉", "5분봉", "10분봉", "30분봉", "1시간봉", "1일봉"],
@@ -46,7 +47,6 @@ def get_bithumb_data(unit, count):
     t_url = "https://api.bithumb.com/public/ticker/BTC_KRW"
     t_res = requests.get(t_url).json()['data']
     
-    # 빗썸은 일봉일 때 URL 구조가 다름
     if "d" in unit:
         c_url = "https://api.bithumb.com/public/candlestick/BTC_KRW/24h"
     else:
@@ -85,13 +85,16 @@ while True:
                 return fig
 
             ch1, ch2 = st.columns(2)
+            # 3. 멘토의 수정: use_container_width=True를 width='stretch'로 교체
             with ch1:
-                st.plotly_chart(create_chart(up_df, f"🔵 UPBIT - {interval}", "#0066FF"), use_container_width=True)
+                st.plotly_chart(create_chart(up_df, f"🔵 UPBIT - {interval}", "#0066FF"), width='stretch')
             with ch2:
-                st.plotly_chart(create_chart(bi_df, f"🟠 BITHUMB - {interval}", "#FF9900"), use_container_width=True)
+                st.plotly_chart(create_chart(bi_df, f"🟠 BITHUMB - {interval}", "#FF9900"), width='stretch')
 
             st.caption(f"Last Update: {get_now_kst().strftime('%H:%M:%S')}")
 
         time.sleep(2)
     except Exception as e:
+        # 에러 로깅 추가 (무슨 에러인지 알아야 하니까)
+        print(f"Loop Error: {e}")
         time.sleep(1)

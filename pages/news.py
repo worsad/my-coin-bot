@@ -20,7 +20,7 @@ else:
     st.error("🚨 API 키를 등록하세요!")
     st.stop()
 
-st.title("💰 AI 뉴스 제목 스캐너")
+st.title("💰 AI 뉴스 정밀 스캐너")
 
 def fetch_and_analyze():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
@@ -30,42 +30,37 @@ def fetch_and_analyze():
     try:
         res = requests.get(url, headers=headers, timeout=15)
         root = ET.fromstring(res.content)
-        # 안정성을 위해 딱 3개만 집중 분석합니다.
         items = root.findall('.//item')[:3] 
         
         if not items:
-            st.warning("🧐 현재 분석할 뉴스가 없습니다.")
             return []
 
         results = []
-        progress_bar = st.progress(0, text="API를 보호하며 제목 분석 중...")
+        progress_bar = st.progress(0, text="AI가 시장 흐름을 읽고 있습니다...")
 
         for i, item in enumerate(items):
             title = item.find('title').text
             link = item.find('link').text
             
-            # [생존 전략] 무료 티어는 10초 대기가 가장 안전합니다.
-            time.sleep(10.0) 
+            # [생존 전략] 무료 API 보호를 위한 13초 대기
+            time.sleep(13.0) 
             
             try:
-                # 멘토의 프롬프트: 점수와 짧은 이유를 함께 요구 (정확도 향상)
-                prompt = f"코인 분석가로서 다음 뉴스 제목이 가격에 미칠 영향을 분석해. 점수는 -100~100 사이로 주고, 이유를 10자 이내로 써. 형식: [점수] 숫자 [이유] 내용. 제목: {title}"
-                
+                # [개선] 숫자를 더 잘 추출할 수 있게 프롬프트 수정
+                prompt = f"코인 트레이더로서 이 뉴스 제목을 -100에서 100 사이 숫자로 평가해. 다른 말 하지 말고 숫자만 딱 말해. 제목: {title}"
                 response = client.models.generate_content(
                     model='gemini-1.5-flash', 
                     contents=prompt
                 )
                 
-                res_text = response.text
-                score = int(re.findall(r'-?\d+', res_text)[0])
-                # 이유 부분 추출 (없으면 공백)
-                reason_match = re.search(r'\[이유\]\s*(.*)', res_text)
-                reason = reason_match.group(1) if reason_match else "분석 완료"
-                
+                # [개선] 0점 방지용 정규표현식
+                res_text = response.text.strip()
+                numbers = re.findall(r'-?\d+', res_text)
+                score = int(numbers[0]) if numbers else 0
             except:
-                score, reason = 0, "분석 지연"
+                score = 0
                 
-            results.append({'title': title, 'link': link, 'score': score, 'reason': reason})
+            results.append({'title': title, 'link': link, 'score': score})
             progress_bar.progress((i + 1) / len(items))
         
         progress_bar.empty()
@@ -82,20 +77,19 @@ if st.session_state.news_data:
     data = st.session_state.news_data
     avg_score = sum(n['score'] for n in data) / len(data)
     
-    # 종합 지표
-    st.subheader(f"📊 종합 시장 점수: {avg_score:+.1f}점")
+    st.subheader(f"📊 종합 시장 심리: {avg_score:+.1f}점")
     
     fig = px.bar(data, x='score', y='title', orientation='h', 
                  color='score', color_continuous_scale='RdBu', range_x=[-100, 100])
-    st.plotly_chart(fig, use_container_width=True, key="fixed_title_chart")
+    
+    # 🔥 [로그 에러 해결] use_container_width=True 대신 width='stretch' 사용
+    st.plotly_chart(fig, width='stretch', key="fixed_news_chart")
 
     st.divider()
     
     for n in data:
         color = "red" if n['score'] < 0 else "blue"
-        with st.expander(f"**[:{color}[{n['score']}점]]** {n['title']}"):
-            st.write(f"💡 **AI 판단:** {n['reason']}")
-            st.write(f"🔗 [기사 원문]({n['link']})")
+        st.markdown(f"**[:{color}[{n['score']}점]]** [{n['title']}]({n['link']})")
 
     if st.button('🔄 다시 분석하기', key="refresh_btn"):
         del st.session_state.news_data

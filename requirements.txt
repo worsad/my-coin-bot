@@ -2,7 +2,7 @@ streamlit
 requests
 pandas
 plotly
-google-generativeai
+google-generativeai>=0.8.0
 python-dotenv
 beautifulsoup4
 lxml
